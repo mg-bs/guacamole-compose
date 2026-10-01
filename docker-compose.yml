@@ -1,0 +1,65 @@
+networks:
+  guaca:
+    driver: bridge
+
+secrets:
+  POSTGRESQL_PASSWORD_FILE:
+    file: './secrets/POSTGRESQL_PASSWORD'
+  POSTGRESQL_USERNAME_FILE:
+    file: './secrets/POSTGRESQL_USER'
+
+volumes:
+    initdb:
+
+services:
+  postgres:
+    container_name: guaca_database
+    image: postgres:18-alpine
+    group_add:
+      - "1000"
+    secrets: ['POSTGRESQL_PASSWORD_FILE','POSTGRESQL_USERNAME_FILE']
+    environment:
+      PGDATA: /var/lib/postgresql/data/guacamole
+      POSTGRES_DB: guacamole_db
+      POSTGRES_PASSWORD_FILE: '/run/secrets/POSTGRESQL_PASSWORD_FILE'
+      POSTGRES_USER_FILE: '/run/secrets/POSTGRESQL_USERNAME_FILE'
+    networks:
+      - guaca
+    volumes:
+      - './data:/var/lib/postgresql/data:Z'
+      - 'initdb:/docker-entrypoint-initdb.d:ro'
+    restart: unless-stopped
+
+  guacd:
+    container_name: guaca_guacd
+    image: guacamole/guacd:1.6.0
+    group_add:
+      - "1000"
+    networks:
+      - guaca
+    restart: unless-stopped
+
+  guacamole:
+    container_name: guaca_guacamole
+    image: guacamole/guacamole:1.6.0
+    group_add:
+      - "1000"
+    depends_on:
+    - guacd
+    - postgres
+    secrets: ['POSTGRESQL_PASSWORD_FILE','POSTGRESQL_USERNAME_FILE']
+    environment:
+      GUACD_HOSTNAME: guacd
+      POSTGRESQL_ENABLED: 'true'
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USERNAME_FILE: '/run/secrets/POSTGRESQL_USERNAME_FILE'
+      POSTGRESQL_PASSWORD_FILE: '/run/secrets/POSTGRESQL_PASSWORD_FILE'
+      WEBAPP_CONTEXT: ROOT
+    networks:
+      - guaca
+    volumes:
+      - 'initdb:/opt/guacamole/extensions/guacamole-auth-jdbc/postgresql/schema:ro'
+    ports:
+      - 8080:8080/tcp
+    restart: unless-stopped
